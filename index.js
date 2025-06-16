@@ -9,6 +9,17 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
+// 🧠 Function to estimate account creation date from TikTok user ID
+function getCreationDateFromUserId(userId) {
+  try {
+    const snowflake = BigInt(userId);
+    const timestamp = Number(snowflake >> 32n) + 1_288_834_974_000; // TikTok Epoch offset
+    return new Date(timestamp).toISOString(); // or .toDateString() if you want short format
+  } catch (err) {
+    return null;
+  }
+}
+
 app.get('/', (req, res) => {
   res.send('TikTok API Backend is running');
 });
@@ -30,8 +41,9 @@ app.get('/api/user/:username', async (req, res) => {
 
     const data = await response.json();
 
-    // Check if essential data exists
-    if (data && data.username) {
+    if (data && data.username && data.user_id) {
+      const createdAt = getCreationDateFromUserId(data.user_id);
+
       res.json({
         username: data.username,
         nickname: data.nickname,
@@ -41,7 +53,8 @@ app.get('/api/user/:username', async (req, res) => {
         verified: data.verified,
         description: data.description,
         region: data.region,
-        user_id: data.user_id
+        user_id: data.user_id,
+        created_at: createdAt // 🎉 Now included
       });
     } else {
       res.status(404).json({ error: 'User not found or data missing' });
