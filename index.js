@@ -12,10 +12,10 @@ app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
 
   try {
-    const response = await axios.get(`https://tiktok112.p.rapidapi.com/user/info/${username}`, {
+    const response = await axios.get(`tiktok-api23.p.rapidapi.com/user/info/${username}`, {
       headers: {
         'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
-        'X-RapidAPI-Host': 'tiktok112.p.rapidapi.com'
+        'X-RapidAPI-Host': 'tiktok-api23.p.rapidapi.com'
       }
     });
 
