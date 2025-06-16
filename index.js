@@ -13,8 +13,12 @@ const PORT = process.env.PORT || 3000;
 function getCreationDateFromUserId(userId) {
   try {
     const snowflake = BigInt(userId);
-    const timestamp = Number(snowflake >> 32n) + 1_288_834_974_000; // TikTok Epoch offset
-    return new Date(timestamp).toISOString(); // or .toDateString() if you want short format
+    const timestamp = Number(snowflake >> 32n) + 1_288_834_974_000;
+    const date = new Date(timestamp);
+
+    // Format: January 27, 2020
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+    return date.toLocaleDateString('en-US', options);
   } catch (err) {
     return null;
   }
