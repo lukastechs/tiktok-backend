@@ -1,39 +1,52 @@
+// index.js
 import express from 'express';
-import axios from 'axios';
-import cors from 'cors';
 import dotenv from 'dotenv';
+import cors from 'cors';
+import fetch from 'node-fetch';
 
 dotenv.config();
-
 const app = express();
+const PORT = process.env.PORT || 5000;
+
 app.use(cors());
 
+app.get('/', (req, res) => {
+  res.send('TikTok API Backend is running');
+});
+
 app.get('/api/user/:username', async (req, res) => {
-  const username = req.params.username;
+  const { username } = req.params;
 
   try {
-    const response = await axios.get(`tiktok-api23.p.rapidapi.com/user/info/${username}`, {
+    const response = await fetch(`https://tiktok-api6.p.rapidapi.com/user/details?username=${username}`, {
+      method: 'GET',
       headers: {
-        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
-        'X-RapidAPI-Host': 'tiktok-api23.p.rapidapi.com'
+        'x-rapidapi-host': 'tiktok-api6.p.rapidapi.com',
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY
       }
     });
 
-    const user = response.data.user;
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const json = await response.json();
 
-    res.json({
-      username: user.unique_id,
-      avatar: user.avatar,
-      followers: user.follower_count,
-      likes: user.total_favorited,
-      created_at: user.create_time ? new Date(user.create_time * 1000).toISOString().split('T')[0] : null
-    });
+    if (json && json.data) {
+      const user = json.data;
+      res.json({
+        username: user.username,
+        avatar: user.avatar,
+        followers: user.followers,
+        likes: user.likes,
+        created_at: new Date(user.create_time * 1000).toISOString().split('T')[0]
+      });
+    } else {
+      res.status(404).json({ error: 'User not found' });
+    }
 
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch data' });
+    console.error('API Error:', error);
+    res.status(500).json({ error: 'Failed to fetch TikTok user data' });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
