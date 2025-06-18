@@ -1,13 +1,13 @@
 import express from 'express';
 import cors from 'cors';
-import { TikAPI } from 'tikapi';
+import TikAPI from 'tikapi';
 
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-// Initialize TikAPI with your key
-const api = TikAPI("e5lTOPJ45S2Qw3R2JH0SPcr33LRn3XvXXbWmh5XwMztwFqUo");
+// Initialize TikAPI with your API key
+const api = TikAPI('e5lTOPJ45S2Qw3R2JH0SPcr33LRn3XvXXbWmh5XwMztwFqUo');
 
 // TikTokAgeEstimator class (unchanged)
 class TikTokAgeEstimator {
@@ -126,84 +126,86 @@ class TikTokAgeEstimator {
   }
 }
 
-// Helper functions (keep unchanged)
-function formatDate(date) { /* ... */ }
-function calculateAge(createdDate) { /* ... */ }
+// Helper functions (unchanged)
+function formatDate(date) {
+  const options = { year: 'numeric', month: 'long', day: 'numeric' };
+  return date.toLocaleDateString('en-US', options);
+}
+
+function calculateAge(createdDate) {
+  const now = new Date();
+  const created = new Date(createdDate);
+  const diffTime = Math.abs(now - created);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const diffMonths = Math.floor(diffDays / 30);
+  const diffYears = Math.floor(diffMonths / 12);
+  if (diffYears > 0) {
+    const remainingMonths = diffMonths % 12;
+    return `${diffYears} year${diffYears > 1 ? 's' : ''}${remainingMonths > 0 ? ` and ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}` : ''}`;
+  } else if (diffMonths > 0) {
+    return `${diffMonths} month${diffMonths > 1 ? 's' : ''}`;
+  } else {
+    return `${diffDays} day${diffDays > 1 ? 's' : ''}`;
+  }
+}
 
 app.get('/', (req, res) => {
-  res.send('TikTok Account Age Checker API is running (TikAPI version)');
+  res.send('TikTok Account Age Checker API is running');
 });
 
 app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
-  
+
   try {
-    // 1. Get user info from TikAPI
-    const userResponse = await api.public.check({
+    // Use TikAPI's /public/user/info endpoint
+    const response = await api.public.user({
       username: username
     });
 
-    if (!userResponse?.user) {
-      throw new Error('User not found');
-    }
+    if (response.json?.success && response.json.user) {
+      const userData = response.json.user;
+      const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
+        userData.id || '0',
+        userData.uniqueId || username,
+        userData.stats?.followerCount || 0,
+        userData.stats?.heartCount || 0,
+        userData.verified || false
+      );
 
-    const userData = userResponse.user;
+      const formattedDate = formatDate(ageEstimate.estimatedDate);
+      const accountAge = calculateAge(ageEstimate.estimatedDate);
 
-    // 2. Try to get first video (for more accurate creation date)
-    let firstVideoDate = null;
-    try {
-      const videosResponse = await api.public.posts({
-        username: username,
-        count: 1
+      res.json({
+        username: userData.uniqueId || username,
+        nickname: userData.nickname || '',
+        avatar: userData.avatarLarger || '',
+        followers: userData.stats?.followerCount || 0,
+        total_likes: userData.stats?.heartCount || 0,
+        verified: userData.verified || false,
+        description: userData.signature || '',
+        region: userData.region || '',
+        user_id: userData.id || '',
+        estimated_creation_date: formattedDate,
+        account_age: accountAge,
+        estimation_confidence: ageEstimate.confidence,
+        estimation_method: ageEstimate.method,
+        accuracy_range: ageEstimate.accuracy,
+        estimation_details: {
+          all_estimates: ageEstimate.allEstimates,
+          note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
+        }
       });
-      if (videosResponse?.items?.[0]?.createTime) {
-        firstVideoDate = new Date(videosResponse.items[0].createTime * 1000);
-      }
-    } catch (e) {
-      console.log("Couldn't fetch videos, using estimation only");
+    } else {
+      res.status(404).json({ error: response.json?.message || 'User not found or data missing' });
     }
-
-    // 3. Use your estimation logic
-    const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
-      userData.id,
-      username,
-      userData.followerCount || 0,
-      userData.heartCount || 0,
-      userData.verified || false
-    );
-
-    // Use video date if available, otherwise use estimate
-    const finalEstimateDate = firstVideoDate || ageEstimate.estimatedDate;
-
-    res.json({
-      username: username,
-      nickname: userData.nickname,
-      avatar: userData.avatarLarger,
-      followers: userData.followerCount,
-      likes: userData.heartCount,
-      verified: userData.verified,
-      description: userData.signature,
-      
-      // Age estimation results
-      estimated_creation_date: formatDate(finalEstimateDate),
-      account_age: calculateAge(finalEstimateDate),
-      estimation_confidence: firstVideoDate ? 'high' : ageEstimate.confidence,
-      estimation_method: firstVideoDate ? 'First video date' : ageEstimate.method,
-      accuracy: firstVideoDate ? '± 3 months' : ageEstimate.accuracy,
-      
-      // Additional data from TikAPI
-      tikapi_data: {
-        user: userData
-      }
-    });
-    
   } catch (error) {
-    console.error('API Error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch user info',
-      details: error.message 
-    });
+    console.error('TikAPI Error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch user info from TikAPI' });
   }
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
 app.listen(PORT, () => {
