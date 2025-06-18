@@ -14,123 +14,6 @@ if (!TIKAPI_KEY) {
   process.exit(1);
 }
 
-// Original TikTokAgeEstimator class
-class TikTokAgeEstimator {
-  static estimateFromUserId(userId) {
-    try {
-      const id = BigInt(userId);
-      const ranges = [
-        { min: 0n, max: 100000000n, date: new Date('2016-09-01') },
-        { min: 100000000n, max: 500000000n, date: new Date('2017-01-01') },
-        { min: 500000000n, max: 1000000000n, date: new Date('2017-06-01') },
-        { min: 1000000000n, max: 2000000000n, date: new Date('2018-01-01') },
-        { min: 2000000000n, max: 5000000000n, date: new Date('2018-08-01') },
-        { min: 5000000000n, max: 10000000000n, date: new Date('2019-03-01') },
-        { min: 10000000000n, max: 20000000000n, date: new Date('2019-09-01') },
-        { min: 20000000000n, max: 50000000000n, date: new Date('2020-03-01') },
-        { min: 50000000000n, max: 100000000000n, date: new Date('2020-09-01') },
-        { min: 100000000000n, max: 200000000000n, date: new Date('2021-03-01') },
-        { min: 200000000000n, max: 500000000000n, date: new Date('2021-09-01') },
-        { min: 500000000000n, max: 1000000000000n, date: new Date('2022-03-01') },
-        { min: 1000000000000n, max: 2000000000000n, date: new Date('2022-09-01') },
-        { min: 2000000000000n, max: 5000000000000n, date: new Date('2023-03-01') },
-        { min: 5000000000000n, max: 10000000000000n, date: new Date('2023-09-01') },
-        { min: 10000000000000n, max: 20000000000000n, date: new Date('2024-03-01') },
-        { min: 20000000000000n, max: BigInt(Number.MAX_SAFE_INTEGER), date: new Date('2024-09-01') }
-      ];
-      for (const range of ranges) {
-        if (id >= range.min && id < range.max) {
-          return range.date;
-        }
-      }
-      return new Date();
-    } catch (err) {
-      return null;
-    }
-  }
-
-  static estimateFromUsername(username) {
-    if (!username) return null;
-    const patterns = [
-      { regex: /^user\d{7,9}$/, dateRange: new Date('2016-09-01') },
-      { regex: /^[a-z]{3,8}\d{2,4}$/, dateRange: new Date('2017-03-01') },
-      { regex: /^\w{3,8}$/, dateRange: new Date('2017-09-01') },
-      { regex: /^.{1,8}$/, dateRange: new Date('2018-06-01') },
-    ];
-    for (const pattern of patterns) {
-      if (pattern.regex.test(username)) {
-        return pattern.dateRange;
-      }
-    }
-    return null;
-  }
-
-  static estimateFromMetrics(followers, totalLikes, verified) {
-    const scores = [];
-    if (followers > 1000000) scores.push(new Date('2018-01-01'));
-    else if (followers > 100000) scores.push(new Date('2019-01-01'));
-    else if (followers > 10000) scores.push(new Date('2020-01-01'));
-    else scores.push(new Date('2021-01-01'));
-    if (totalLikes > 10000000) scores.push(new Date('2018-06-01'));
-    else if (totalLikes > 1000000) scores.push(new Date('2019-06-01'));
-    else if (totalLikes > 100000) scores.push(new Date('2020-06-01'));
-    if (verified) scores.push(new Date('2018-01-01'));
-    if (scores.length === 0) return null;
-    return new Date(Math.min(...scores.map(d => d.getTime())));
-  }
-
-  static estimateAccountAge(userId, username, followers = 0, totalLikes = 0, verified = false) {
-    const estimates = [];
-    const confidence = { low: 1, medium: 2, high: 3 };
-    const userIdEst = this.estimateFromUserId(userId);
-    if (userIdEst) {
-      estimates.push({ 
-        date: userIdEst, 
-        confidence: confidence.high, 
-        method: 'User ID Analysis' 
-      });
-    }
-    const usernameEst = this.estimateFromUsername(username);
-    if (usernameEst) {
-      estimates.push({ 
-        date: usernameEst, 
-        confidence: confidence.medium, 
-        method: 'Username Pattern' 
-      });
-    }
-    const metricsEst = this.estimateFromMetrics(followers, totalLikes, verified);
-    if (metricsEst) {
-      estimates.push({ 
-        date: metricsEst, 
-        confidence: confidence.low, 
-        method: 'Profile Metrics' 
-      });
-    }
-    if (estimates.length === 0) {
-      return {
-        estimatedDate: new Date(),
-        confidence: 'very_low',
-        method: 'Default',
-        accuracy: '± 2 years'
-      };
-    }
-    const weightedSum = estimates.reduce((sum, est) => sum + (est.date.getTime() * est.confidence), 0);
-    const totalWeight = estimates.reduce((sum, est) => sum + est.confidence, 0);
-    const finalDate = new Date(weightedSum / totalWeight);
-    const maxConfidence = Math.max(...estimates.map(e => e.confidence));
-    const confidenceLevel = maxConfidence === 3 ? 'high' : maxConfidence === 2 ? 'medium' : 'low';
-    const primaryMethod = estimates.find(e => e.confidence === maxConfidence)?.method || 'Combined';
-    return {
-      estimatedDate: finalDate,
-      confidence: confidenceLevel,
-      method: primaryMethod,
-      accuracy: confidenceLevel === 'high' ? '± 6 months' : 
-                confidenceLevel === 'medium' ? '± 1 year' : '± 2 years',
-      allEstimates: estimates
-    };
-  }
-}
-
 // Helper functions
 function formatDate(date) {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
@@ -160,64 +43,97 @@ app.get('/', (req, res) => {
 
 app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
+  const checkUrl = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
+  const postsUrl = `https://api.tikapi.io/user/posts?username=${encodeURIComponent(username)}&count=10`;
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
-    const response = await fetch(url, {
+    // Simulate delay to avoid rate limits
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Fetch user profile
+    const checkResponse = await fetch(checkUrl, {
       method: 'GET',
       headers: {
         'X-API-KEY': TIKAPI_KEY,
         'Accept': 'application/json'
       }
     });
-    const data = await response.json();
+    const checkData = await checkResponse.json();
+    console.log('TikAPI check response:', JSON.stringify(checkData, null, 2));
 
-    console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
-
-    if (data?.status === 'success' && data.userInfo) {
-      const user = data.userInfo.user;
-      const stats = data.userInfo.stats;
-      const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
-        user.id || '0',
-        user.uniqueId || username,
-        stats?.followerCount || 0,
-        stats?.heartCount || 0,
-        user.verified || false
-      );
-
-      const formattedDate = formatDate(ageEstimate.estimatedDate);
-      const accountAge = calculateAge(ageEstimate.estimatedDate);
-
-      res.json({
-        username: user.uniqueId || username,
-        nickname: user.nickname || '',
-        avatar: user.avatarLarger || '',
-        followers: stats?.followerCount || 0,
-        total_likes: stats?.heartCount || 0,
-        verified: user.verified || false,
-        description: user.signature || '',
-        region: user.region || 'Unknown',
-        user_id: user.id || '',
-        estimated_creation_date: formattedDate,
-        account_age: accountAge,
-        estimation_confidence: ageEstimate.confidence,
-        estimation_method: ageEstimate.method,
-        accuracy_range: ageEstimate.accuracy,
-        estimation_details: {
-          all_estimates: ageEstimate.allEstimates,
-          note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
-        }
-      });
-    } else {
-      res.status(404).json({ 
-        error: data?.message || 'User not found or data missing',
-        tikapi_response: data
+    if (checkData?.status !== 'success' || !checkData.userInfo) {
+      return res.status(404).json({
+        error: checkData?.message || 'User not found or data missing',
+        tikapi_response: checkData
       });
     }
+
+    const user = checkData.userInfo.user || {};
+    const stats = checkData.userInfo.stats || {};
+
+    // Fetch posts to find oldest
+    let estimatedCreationDate = new Date().toISOString().split('T')[0]; // Default to today
+    let accountAge = calculateAge(estimatedCreationDate);
+    let estimationConfidence = 'low';
+    let estimationMethod = 'Default';
+    let accuracyRange = '± 2 years';
+    let allEstimates = [];
+
+    const postsResponse = await fetch(postsUrl, {
+      headers: {
+        'X-API-KEY': TIKAPI_KEY,
+        'Accept': 'application/json'
+      }
+    });
+    const postsData = await postsResponse.json();
+    console.log('TikAPI posts response:', JSON.stringify(postsData, null, 2));
+
+    if (postsData.status === 'success' && postsData.data && postsData.data.length > 0) {
+      // Find oldest post
+      const oldestPost = postsData.data.reduce((oldest, post) => {
+        return !oldest || new Date(post.create_time) < new Date(oldest.create_time) ? post : oldest;
+      }, null);
+
+      if (oldestPost) {
+        const createTime = new Date(oldestPost.create_time);
+        estimatedCreationDate = createTime.toISOString().split('T')[0]; // e.g., "2020-03-05"
+        accountAge = calculateAge(createTime);
+        estimationConfidence = 'high';
+        estimationMethod = 'First Post Analysis';
+        accuracyRange = '± 7 days';
+        allEstimates = [{
+          date: createTime,
+          confidence: 3,
+          method: 'First Post Analysis'
+        }];
+      }
+    }
+
+    const formattedDate = formatDate(new Date(estimatedCreationDate));
+
+    res.json({
+      username: user.uniqueId || username,
+      nickname: user.nickname || '',
+      avatar: user.avatarLarger || '',
+      followers: stats.followerCount || 0,
+      total_likes: stats.heartCount || 0,
+      verified: user.verified || false,
+      description: user.signature || '',
+      region: user.region || 'Unknown',
+      user_id: user.id || '',
+      estimated_creation_date: formattedDate,
+      account_age: accountAge,
+      estimation_confidence: estimationConfidence,
+      estimation_method: estimationMethod,
+      accuracy_range: accuracyRange,
+      estimation_details: {
+        all_estimates: allEstimates,
+        note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
+      }
+    });
   } catch (error) {
     console.error('TikAPI Error:', error.message, error.stack);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to fetch user info from TikAPI',
       details: error.message
     });
