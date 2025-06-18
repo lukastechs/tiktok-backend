@@ -1,14 +1,21 @@
 import express from 'express';
 import cors from 'cors';
-import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+import { TikAPI } from '@tikapi/core';
 
+dotenv.config();
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-const TIKAPI_KEY = 'e5lTOPJ45S2Qw3R2JH0SPcr33LRn3XvXXbWmh5XwMztwFqUo';
+const TIKAPI_KEY = process.env.TIKAPI_KEY;
+if (!TIKAPI_KEY) {
+  console.error('TIKAPI_KEY is not set');
+  process.exit(1);
+}
+const api = TikAPI(TIKAPI_KEY);
 
-// TikTokAgeEstimator class (unchanged)
+// Original TikTokAgeEstimator class
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
     try {
@@ -125,7 +132,7 @@ class TikTokAgeEstimator {
   }
 }
 
-// Helper functions (unchanged)
+// Helper functions
 function formatDate(date) {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
   return date.toLocaleDateString('en-US', options);
@@ -153,70 +160,59 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/user/:username', async (req, res) => {
-  let username = req.params.username;
-  // Remove @ prefix if present
-  if (username.startsWith('@')) {
-    username = username.slice(1);
-  }
+  const username = req.params.username;
 
   try {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const url = `https://api.tikapi.io/public/user?username=${encodeURIComponent(username)}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${TIKAPI_KEY}`,
-        'Accept': 'application/json'
-      }
-    });
-    const data = await response.json();
+    const result = await api.public.user({ username });
 
-    console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
+    console.log('TikAPI Response:', JSON.stringify(result, null, 2)); // Log full response
 
-    if (data?.status === 'success' && data.userInfo) {
-      const userData = data.userInfo.user;
-      const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
-        userData.id || '0',
-        userData.uniqueId || username,
-        userData.stats?.followerCount || 0,
-        userData.stats?.heartCount || 0,
-        userData.verified || false
-      );
-
-      const formattedDate = formatDate(ageEstimate.estimatedDate);
-      const accountAge = calculateAge(ageEstimate.estimatedDate);
-
-      res.json({
-        username: userData.uniqueId || username,
-        nickname: userData.nickname || '',
-        avatar: userData.avatarLarger || '',
-        followers: userData.stats?.followerCount || 0,
-        total_likes: userData.stats?.heartCount || 0,
-        verified: userData.verified || false,
-        description: userData.signature || '',
-        region: userData.region || '',
-        user_id: userData.id || '',
-        estimated_creation_date: formattedDate,
-        account_age: accountAge,
-        estimation_confidence: ageEstimate.confidence,
-        estimation_method: ageEstimate.method,
-        accuracy_range: ageEstimate.accuracy,
-        estimation_details: {
-          all_estimates: ageEstimate.allEstimates,
-          note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
-        }
-      });
-    } else {
-      res.status(404).json({ 
-        error: data?.message || 'User not found or data missing',
-        tikapi_response: data
+    if (!result || !result.userInfo) {
+      return res.status(404).json({ 
+        error: 'User not found or data missing',
+        tikapi_response: result
       });
     }
-  } catch (error) {
-    console.error('TikAPI Error:', error.message, error.stack);
-    res.status(500).json({ 
+
+    const user = result.userInfo.user;
+    const stats = result.userInfo.stats;
+    const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
+      user.id || '0',
+      user.uniqueId || username,
+      stats?.followerCount || 0,
+      stats?.heartCount || 0,
+      user.verified || false
+    );
+
+    const formattedDate = formatDate(ageEstimate.estimatedDate);
+    const accountAge = calculateAge(ageEstimate.estimatedDate);
+
+    return res.json({
+      username: user.uniqueId || username,
+      nickname: user.nickname || '',
+      avatar: user.avatarLarger || '',
+      followers: stats?.followerCount || 0,
+      total_likes: stats?.heartCount || 0,
+      verified: user.verified || false,
+      description: user.signature || '',
+      region: user.region || '',
+      user_id: user.id || '',
+      estimated_creation_date: formattedDate,
+      account_age: accountAge,
+      estimation_confidence: ageEstimate.confidence,
+      estimation_method: ageEstimate.method,
+      accuracy_range: ageEstimate.accuracy,
+      estimation_details: {
+        all_estimates: ageEstimate.allEstimates,
+        note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
+      }
+    });
+  } catch (err) {
+    console.error('TikAPI Error:', err.message, err.stack);
+    return res.status(500).json({ 
       error: 'Failed to fetch user info from TikAPI',
-      details: error.message
+      details: err.message
     });
   }
 });
