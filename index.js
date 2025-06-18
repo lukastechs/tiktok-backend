@@ -157,10 +157,11 @@ app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
 
   try {
-    // Use TikAPI's /public/user/info endpoint
     const response = await api.public.user({
       username: username
     });
+
+    console.log('TikAPI Response:', JSON.stringify(response.json, null, 2)); // Log full response
 
     if (response.json?.success && response.json.user) {
       const userData = response.json.user;
@@ -196,14 +197,19 @@ app.get('/api/user/:username', async (req, res) => {
         }
       });
     } else {
-      res.status(404).json({ error: response.json?.message || 'User not found or data missing' });
+      res.status(404).json({ 
+        error: response.json?.message || 'User not found or data missing',
+        tikapi_response: response.json // Include full response
+      });
     }
   } catch (error) {
-    console.error('TikAPI Error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch user info from TikAPI' });
+    console.error('TikAPI Error:', error.message, error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch user info from TikAPI',
+      details: error.message
+    });
   }
 });
-
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
