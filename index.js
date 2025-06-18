@@ -155,59 +155,67 @@ app.get('/', (req, res) => {
 
 app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
-
+  
   try {
-    // Use TikAPI's /public/user/info endpoint
-    const response = await api.public.user({
+    // 1. Get user info from TikAPI
+    const userResponse = await api.public.check({
       username: username
     });
 
-    if (response.json?.success && response.json.user) {
-      const userData = response.json.user;
+    // TikAPI returns user data differently than RapidAPI
+    if (!userResponse || userResponse.error) {
+      throw new Error(userResponse?.error?.message || 'User not found');
+    }
+
+    const userData = userResponse;
+    
+    // 2. Get creation date from user's first video (if available)
+    let creationDate = null;
+    try {
+      const videosResponse = await api.public.posts({
+        username: username,
+        count: 1
+      });
+      
+      if (videosResponse?.items?.[0]?.createTime) {
+        creationDate = new Date(videosResponse.items[0].createTime * 1000);
+      }
+    } catch (e) {
+      console.log("Video fetch failed, using estimation:", e.message);
+    }
+
+    // 3. Fall back to estimation if no video date
+    if (!creationDate) {
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
-        userData.id || '0',
-        userData.uniqueId || username,
-        userData.stats?.followerCount || 0,
-        userData.stats?.heartCount || 0,
+        userData.id?.toString(), // Ensure ID is string
+        username,
+        userData.followerCount || 0,
+        userData.heartCount || 0,
         userData.verified || false
       );
-
-      const formattedDate = formatDate(ageEstimate.estimatedDate);
-      const accountAge = calculateAge(ageEstimate.estimatedDate);
-
-      res.json({
-        username: userData.uniqueId || username,
-        nickname: userData.nickname || '',
-        avatar: userData.avatarLarger || '',
-        followers: userData.stats?.followerCount || 0,
-        total_likes: userData.stats?.heartCount || 0,
-        verified: userData.verified || false,
-        description: userData.signature || '',
-        region: userData.region || '',
-        user_id: userData.id || '',
-        estimated_creation_date: formattedDate,
-        account_age: accountAge,
-        estimation_confidence: ageEstimate.confidence,
-        estimation_method: ageEstimate.method,
-        accuracy_range: ageEstimate.accuracy,
-        estimation_details: {
-          all_estimates: ageEstimate.allEstimates,
-          note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
-        }
-      });
-    } else {
-      res.status(404).json({ error: response.json?.message || 'User not found or data missing' });
+      creationDate = ageEstimate.estimatedDate;
     }
+
+    // Successful response
+    res.json({
+      username: username,
+      nickname: userData.nickname,
+      avatar: userData.avatarLarger,
+      followers: userData.followerCount,
+      likes: userData.heartCount,
+      verified: userData.verified,
+      description: userData.signature,
+      estimated_creation_date: formatDate(creationDate),
+      account_age: calculateAge(creationDate),
+      tikapi_data: userData // Include raw response for debugging
+    });
+    
   } catch (error) {
-    console.error('TikAPI Error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch user info from TikAPI' });
+    console.error('API Error:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch user info',
+      details: error.message,
+      suggestion: 'Check if username exists and API key is valid'
+    });
   }
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
