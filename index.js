@@ -153,23 +153,28 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/user/:username', async (req, res) => {
-  const username = req.params.username;
+  let username = req.params.username;
+  // Remove @ prefix if present
+  if (username.startsWith('@')) {
+    username = username.slice(1);
+  }
 
   try {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const url = `https://api.tikapi.io/public/user/info?username=${encodeURIComponent(username)}`;
+    const url = `https://api.tikapi.io/public/user?username=${encodeURIComponent(username)}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${TIKAPI_KEY}`
+        'Authorization': `Bearer ${TIKAPI_KEY}`,
+        'Accept': 'application/json'
       }
     });
     const data = await response.json();
 
     console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
 
-    if (data?.success && data.user) {
-      const userData = data.user;
+    if (data?.status === 'success' && data.userInfo) {
+      const userData = data.userInfo.user;
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
         userData.id || '0',
         userData.uniqueId || username,
