@@ -6,8 +6,11 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-const TIKAPI_KEY = 'e5lTOPJ45S2Qw3R2JH0SPcr33LRn3XvXXbWmh5XwMztwFqUo';
-
+const TIKAPI_KEY = process.env.TIKAPI_KEY;
+if (!TIKAPI_KEY) {
+  console.error('TIKAPI_KEY is not set');
+  process.exit(1);
+}
 // TikTokAgeEstimator class (unchanged)
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
