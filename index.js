@@ -1,13 +1,12 @@
 import express from 'express';
 import cors from 'cors';
-import TikAPI from 'tikapi';
+import fetch from 'node-fetch';
 
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-// Initialize TikAPI with your API key
-const api = TikAPI('e5lTOPJ45S2Qw3R2JH0SPcr33LRn3XvXXbWmh5XwMztwFqUo');
+const TIKAPI_KEY = 'e5lTOPJ45S2Qw3R2JH0SPcr33LRn3XvXXbWmh5XwMztwFqUo';
 
 // TikTokAgeEstimator class (unchanged)
 class TikTokAgeEstimator {
@@ -157,14 +156,20 @@ app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
 
   try {
-    const response = await api.public.user({
-      username: username
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
+    const url = `https://api.tikapi.io/public/user/info?username=${encodeURIComponent(username)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${TIKAPI_KEY}`
+      }
     });
+    const data = await response.json();
 
-    console.log('TikAPI Response:', JSON.stringify(response.json, null, 2)); // Log full response
+    console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
 
-    if (response.json?.success && response.json.user) {
-      const userData = response.json.user;
+    if (data?.success && data.user) {
+      const userData = data.user;
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
         userData.id || '0',
         userData.uniqueId || username,
@@ -198,8 +203,8 @@ app.get('/api/user/:username', async (req, res) => {
       });
     } else {
       res.status(404).json({ 
-        error: response.json?.message || 'User not found or data missing',
-        tikapi_response: response.json // Include full response
+        error: data?.message || 'User not found or data missing',
+        tikapi_response: data
       });
     }
   } catch (error) {
@@ -210,6 +215,7 @@ app.get('/api/user/:username', async (req, res) => {
     });
   }
 });
+
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
