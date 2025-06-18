@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { TikAPI } from '@tikapi/core';
+import fetch from 'node-fetch';
 
 dotenv.config();
 const app = express();
@@ -13,7 +13,6 @@ if (!TIKAPI_KEY) {
   console.error('TIKAPI_KEY is not set');
   process.exit(1);
 }
-const api = TikAPI(TIKAPI_KEY);
 
 // Original TikTokAgeEstimator class
 class TikTokAgeEstimator {
@@ -164,55 +163,63 @@ app.get('/api/user/:username', async (req, res) => {
 
   try {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const result = await api.public.user({ username });
-
-    console.log('TikAPI Response:', JSON.stringify(result, null, 2)); // Log full response
-
-    if (!result || !result.userInfo) {
-      return res.status(404).json({ 
-        error: 'User not found or data missing',
-        tikapi_response: result
-      });
-    }
-
-    const user = result.userInfo.user;
-    const stats = result.userInfo.stats;
-    const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
-      user.id || '0',
-      user.uniqueId || username,
-      stats?.followerCount || 0,
-      stats?.heartCount || 0,
-      user.verified || false
-    );
-
-    const formattedDate = formatDate(ageEstimate.estimatedDate);
-    const accountAge = calculateAge(ageEstimate.estimatedDate);
-
-    return res.json({
-      username: user.uniqueId || username,
-      nickname: user.nickname || '',
-      avatar: user.avatarLarger || '',
-      followers: stats?.followerCount || 0,
-      total_likes: stats?.heartCount || 0,
-      verified: user.verified || false,
-      description: user.signature || '',
-      region: user.region || '',
-      user_id: user.id || '',
-      estimated_creation_date: formattedDate,
-      account_age: accountAge,
-      estimation_confidence: ageEstimate.confidence,
-      estimation_method: ageEstimate.method,
-      accuracy_range: ageEstimate.accuracy,
-      estimation_details: {
-        all_estimates: ageEstimate.allEstimates,
-        note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
+    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${TIKAPI_KEY}`,
+        'Accept': 'application/json'
       }
     });
-  } catch (err) {
-    console.error('TikAPI Error:', err.message, err.stack);
-    return res.status(500).json({ 
+    const data = await response.json();
+
+    console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
+
+    if (data?.status === 'success' && data.userInfo) {
+      const user = data.userInfo.user;
+      const stats = data.userInfo.stats;
+      const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
+        user.id || '0',
+        user.uniqueId || username,
+        stats?.followerCount || 0,
+        stats?.heartCount || 0,
+        user.verified || false
+      );
+
+      const formattedDate = formatDate(ageEstimate.estimatedDate);
+      const accountAge = calculateAge(ageEstimate.estimatedDate);
+
+      res.json({
+        username: user.uniqueId || username,
+        nickname: user.nickname || '',
+        avatar: user.avatarLarger || '',
+        followers: stats?.followerCount || 0,
+        total_likes: stats?.heartCount || 0,
+        verified: user.verified || false,
+        description: user.signature || '',
+        region: user.region || '',
+        user_id: user.id || '',
+        estimated_creation_date: formattedDate,
+        account_age: accountAge,
+        estimation_confidence: ageEstimate.confidence,
+        estimation_method: ageEstimate.method,
+        accuracy_range: ageEstimate.accuracy,
+        estimation_details: {
+          all_estimates: ageEstimate.allEstimates,
+          note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
+        }
+      });
+    } else {
+      res.status(404).json({ 
+        error: data?.message || 'User not found or data missing',
+        tikapi_response: data
+      });
+    }
+  } catch (error) {
+    console.error('TikAPI Error:', error.message, error.stack);
+    res.status(500).json({ 
       error: 'Failed to fetch user info from TikAPI',
-      details: err.message
+      details: error.message
     });
   }
 });
