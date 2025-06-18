@@ -197,7 +197,7 @@ app.get('/api/user/:username', async (req, res) => {
         total_likes: stats?.heartCount || 0,
         verified: user.verified || false,
         description: user.signature || '',
-        region: user.region || '',
+        region: data.data.user.region,
         user_id: user.id || '',
         estimated_creation_date: formattedDate,
         account_age: accountAge,
