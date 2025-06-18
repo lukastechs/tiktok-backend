@@ -167,7 +167,7 @@ app.get('/api/user/:username', async (req, res) => {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${TIKAPI_KEY}`,
+        'X-API-KEY': TIKAPI_KEY,
         'Accept': 'application/json'
       }
     });
