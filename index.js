@@ -39,6 +39,41 @@ function calculateDateRange(date, accuracy) {
   };
 }
 
+// Enhanced function to extract location info from TikAPI response
+function extractLocationInfo(user) {
+  // Common location fields in TikAPI responses
+  const locationFields = [
+    'region',
+    'country',
+    'countryCode',
+    'location',
+    'regionCode',
+    'nationality',
+    'locale',
+    'language'
+  ];
+  
+  const locationData = {};
+  
+  // Check all possible location fields
+  locationFields.forEach(field => {
+    if (user[field] && user[field] !== '' && user[field] !== null) {
+      locationData[field] = user[field];
+    }
+  });
+  
+  // Log what we found for debugging
+  console.log('Location fields found:', locationData);
+  
+  // Return the most relevant location info
+  return {
+    region: user.region || user.country || user.countryCode || 'Unknown',
+    country: user.country || user.countryCode || 'Unknown',
+    locale: user.locale || user.language || 'Unknown',
+    allLocationData: locationData
+  };
+}
+
 // Original TikTokAgeEstimator class with date range
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
@@ -191,21 +226,49 @@ app.get('/api/user/:username', async (req, res) => {
 
   try {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
-    const response = await fetch(url, {
+    // Try the /public/user endpoint first for complete user info
+    let url = `https://api.tikapi.io/public/user?username=${encodeURIComponent(username)}`;
+    let response = await fetch(url, {
       method: 'GET',
       headers: {
         'X-API-KEY': TIKAPI_KEY,
         'Accept': 'application/json'
       }
     });
+    
+    let data = await response.json();
+    
+    // If /public/user fails, fallback to /public/check
+    if (!response.ok || data?.status !== 'success') {
+      console.log('Trying fallback endpoint /public/check...');
+      url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
+      response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-API-KEY': TIKAPI_KEY,
+          'Accept': 'application/json'
+        }
+      });
+      data = await response.json();
+    }
     const data = await response.json();
 
+    console.log('Current endpoint used:', url);
     console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
+    
+    // Enhanced debugging for user object structure
+    if (data?.userInfo?.user) {
+      console.log('User object keys:', Object.keys(data.userInfo.user));
+      console.log('User object:', JSON.stringify(data.userInfo.user, null, 2));
+    }
 
     if (data?.status === 'success' && data.userInfo) {
       const user = data.userInfo.user;
       const stats = data.userInfo.stats;
+      
+      // Extract location information with debugging
+      const locationInfo = extractLocationInfo(user);
+      
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
         user.id || '0',
         user.uniqueId || username,
@@ -225,7 +288,11 @@ app.get('/api/user/:username', async (req, res) => {
         total_likes: stats?.heartCount || 0,
         verified: user.verified || false,
         description: user.signature || '',
-        region: user.region || 'Unknown',
+        // Enhanced location information
+        region: locationInfo.region,
+        country: locationInfo.country,
+        locale: locationInfo.locale,
+        location_debug: locationInfo.allLocationData, // For debugging
         user_id: user.id || '',
         estimated_creation_date: formattedDate,
         estimated_creation_date_range: ageEstimate.dateRange,
@@ -236,6 +303,19 @@ app.get('/api/user/:username', async (req, res) => {
         estimation_details: {
           all_estimates: ageEstimate.allEstimates,
           note: 'This is an estimated creation date based on available data. Actual creation date may vary.'
+        },
+        // Add raw user data for debugging (remove in production)
+        debug_user_fields: Object.keys(user),
+        debug_user_sample: {
+          id: user.id,
+          uniqueId: user.uniqueId,
+          nickname: user.nickname,
+          region: user.region,
+          country: user.country,
+          countryCode: user.countryCode,
+          location: user.location,
+          locale: user.locale,
+          language: user.language
         }
       });
     } else {
