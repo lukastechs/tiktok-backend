@@ -15,6 +15,9 @@ if (!TIKAPI_KEY) {
   process.exit(1);
 }
 
+// Initialize TikAPI client
+const api = TikAPI(TIKAPI_KEY, { accountKey: X_ACCOUNT_KEY });
+
 // Helper function to calculate date range from accuracy
 function calculateDateRange(date, accuracy) {
   const baseDate = new Date(date);
