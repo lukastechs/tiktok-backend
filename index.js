@@ -1,45 +1,15 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import fetch from 'node-fetch';
+import TikAPI from 'tikapi';
 
-dotenv.config();
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-const TIKAPI_KEY = process.env.TIKAPI_KEY;
-if (!TIKAPI_KEY) {
-  console.error('TIKAPI_KEY is not set');
-  process.exit(1);
-}
+// Initialize TikAPI with your API key
+const api = TikAPI('e5lTOPJ45S2Qw3R2JH0SPcr33LRn3XvXXbWmh5XwMztwFqUo');
 
-// Helper function to calculate date range from accuracy
-function calculateDateRange(date, accuracy) {
-  const baseDate = new Date(date);
-  let monthsToAdd = 0;
-  
-  if (accuracy.includes('6 months')) {
-    monthsToAdd = 6;
-  } else if (accuracy.includes('1 year')) {
-    monthsToAdd = 12;
-  } else if (accuracy.includes('2 years')) {
-    monthsToAdd = 24;
-  }
-
-  const startDate = new Date(baseDate);
-  startDate.setMonth(baseDate.getMonth() - monthsToAdd);
-  
-  const endDate = new Date(baseDate);
-  endDate.setMonth(baseDate.getMonth() + monthsToAdd);
-
-  return {
-    start: formatDate(startDate),
-    end: formatDate(endDate)
-  };
-}
-
-// Original TikTokAgeEstimator class with date range
+// TikTokAgeEstimator class (unchanged)
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
     try {
@@ -136,8 +106,7 @@ class TikTokAgeEstimator {
         estimatedDate: new Date(),
         confidence: 'very_low',
         method: 'Default',
-        accuracy: '± 2 years',
-        dateRange: calculateDateRange(new Date(), '± 2 years')
+        accuracy: '± 2 years'
       };
     }
     const weightedSum = estimates.reduce((sum, est) => sum + (est.date.getTime() * est.confidence), 0);
@@ -146,20 +115,18 @@ class TikTokAgeEstimator {
     const maxConfidence = Math.max(...estimates.map(e => e.confidence));
     const confidenceLevel = maxConfidence === 3 ? 'high' : maxConfidence === 2 ? 'medium' : 'low';
     const primaryMethod = estimates.find(e => e.confidence === maxConfidence)?.method || 'Combined';
-    const accuracy = confidenceLevel === 'high' ? '± 6 months' : 
-                     confidenceLevel === 'medium' ? '± 1 year' : '± 2 years';
     return {
       estimatedDate: finalDate,
       confidence: confidenceLevel,
       method: primaryMethod,
-      accuracy,
-      dateRange: calculateDateRange(finalDate, accuracy),
+      accuracy: confidenceLevel === 'high' ? '± 6 months' : 
+                confidenceLevel === 'medium' ? '± 1 year' : '± 2 years',
       allEstimates: estimates
     };
   }
 }
 
-// Helper functions
+// Helper functions (unchanged)
 function formatDate(date) {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
   return date.toLocaleDateString('en-US', options);
@@ -190,48 +157,35 @@ app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-API-KEY': TIKAPI_KEY,
-        'Accept': 'application/json'
-      }
+    // Use TikAPI's /public/user/info endpoint
+    const response = await api.public.user({
+      username: username
     });
-    const data = await response.json();
 
-    console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
-
-    if (data?.status === 'success' && data.userInfo) {
-      const user = data.userInfo.user;
-      const stats = data.userInfo.stats;
+    if (response.json?.success && response.json.user) {
+      const userData = response.json.user;
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
-        user.id || '0',
-        user.uniqueId || username,
-        stats?.followerCount || 0,
-        stats?.heartCount || 0,
-        user.verified || false
+        userData.id || '0',
+        userData.uniqueId || username,
+        userData.stats?.followerCount || 0,
+        userData.stats?.heartCount || 0,
+        userData.verified || false
       );
 
       const formattedDate = formatDate(ageEstimate.estimatedDate);
       const accountAge = calculateAge(ageEstimate.estimatedDate);
 
       res.json({
-        username: user.uniqueId || username,
-        nickname: user.nickname || '',
-        avatar: user.avatarLarger || '',
-        followers: stats?.followerCount || 0,
-        total_likes: stats?.heartCount || 0,
-        verified: user.verified || false,
-        description: user.signature || '',
-        region: (
-    data?.userInfo?.extraData?.region &&
-    typeof data.userInfo.extraData.region === 'string'
-  ) ? data.userInfo.extraData.region : 'Unknown',
-        user_id: user.id || '',
+        username: userData.uniqueId || username,
+        nickname: userData.nickname || '',
+        avatar: userData.avatarLarger || '',
+        followers: userData.stats?.followerCount || 0,
+        total_likes: userData.stats?.heartCount || 0,
+        verified: userData.verified || false,
+        description: userData.signature || '',
+        region: userData.region || '',
+        user_id: userData.id || '',
         estimated_creation_date: formattedDate,
-        estimated_creation_date_range: ageEstimate.dateRange,
         account_age: accountAge,
         estimation_confidence: ageEstimate.confidence,
         estimation_method: ageEstimate.method,
@@ -242,17 +196,11 @@ app.get('/api/user/:username', async (req, res) => {
         }
       });
     } else {
-      res.status(404).json({ 
-        error: data?.message || 'User not found or data missing',
-        tikapi_response: data
-      });
+      res.status(404).json({ error: response.json?.message || 'User not found or data missing' });
     }
   } catch (error) {
-    console.error('TikAPI Error:', error.message, error.stack);
-    res.status(500).json({ 
-      error: 'Failed to fetch user info from TikAPI',
-      details: error.message
-    });
+    console.error('TikAPI Error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch user info from TikAPI' });
   }
 });
 
