@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import TikAPI from 'tikapi';
+import fetch from 'node-fetch';
 
 dotenv.config();
 const app = express();
@@ -9,15 +9,10 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 const TIKAPI_KEY = process.env.TIKAPI_KEY;
-const X_ACCOUNT_KEY = process.env.X_ACCOUNT_KEY;
-
 if (!TIKAPI_KEY) {
   console.error('TIKAPI_KEY is not set');
   process.exit(1);
 }
-
-// Initialize TikAPI client
-const api = TikAPI(TIKAPI_KEY, { accountKey: X_ACCOUNT_KEY });
 
 // Helper function to calculate date range from accuracy
 function calculateDateRange(date, accuracy) {
@@ -44,7 +39,7 @@ function calculateDateRange(date, accuracy) {
   };
 }
 
-// TikTokAgeEstimator class
+// Original TikTokAgeEstimator class with date range
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
     try {
@@ -195,64 +190,22 @@ app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limiting
-
-    // Step 1: Get secUid from /public/check
-    let response = await api.public.check({ username });
-    const secUid = response?.json?.userInfo?.user?.secUid;
-
-    // Step 2: Try /user/info with secUid
-    if (secUid) {
-      try {
-        response = await api.user.info({ secUid });
-        console.log('Using /user/info endpoint');
-      } catch (err) {
-        console.warn('TikAPI /user/info failed, trying /public/profile:', err.message);
-        try {
-          response = await api.public.profile({ username });
-          console.log('Using /public/profile endpoint');
-        } catch (err) {
-          console.warn('TikAPI /public/profile failed, falling back to /public/check:', err.message);
-          response = await api.public.check({ username });
-          console.log('Using /public/check endpoint');
-        }
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
+    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-API-KEY': TIKAPI_KEY,
+        'Accept': 'application/json'
       }
-    } else {
-      console.warn('No secUid found, falling back to /public/profile');
-      try {
-        response = await api.public.profile({ username });
-        console.log('Using /public/profile endpoint');
-      } catch (err) {
-        console.warn('TikAPI /public/profile failed, falling back to /public/check:', err.message);
-        response = await api.public.check({ username });
-        console.log('Using /public/check endpoint');
-      }
-    }
+    });
+    const data = await response.json();
 
-    const data = response?.json;
-
-    console.log('TikAPI SDK Response:', JSON.stringify(data, null, 2));
+    console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
 
     if (data?.status === 'success' && data.userInfo) {
       const user = data.userInfo.user;
       const stats = data.userInfo.stats;
-
-      // Extract location data
-      const location = {
-        region: user?.region || 
-                user?.location?.region || 
-                user?.location?.country_region?.region || 
-                'Unknown',
-        country: user?.location?.country || 
-                 user?.location?.country_region?.country || 
-                 'Unknown',
-        city: user?.location?.city || 'Unknown',
-        full: user?.location?.full_location || 
-              (user?.location?.city && user?.location?.country ? 
-               `${user.location.city}, ${user.location.country}` : 
-               'Unknown')
-      };
-
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
         user.id || '0',
         user.uniqueId || username,
@@ -272,7 +225,7 @@ app.get('/api/user/:username', async (req, res) => {
         total_likes: stats?.heartCount || 0,
         verified: user.verified || false,
         description: user.signature || '',
-        location: location,
+        region: user.region || 'Unknown',
         user_id: user.id || '',
         estimated_creation_date: formattedDate,
         estimated_creation_date_range: ageEstimate.dateRange,
@@ -286,20 +239,16 @@ app.get('/api/user/:username', async (req, res) => {
         }
       });
     } else {
-      res.status(404).json({
-        error: data?.message || 'User not found',
-        details: data?.error_details || 'No additional error information'
+      res.status(404).json({ 
+        error: data?.message || 'User not found or data missing',
+        tikapi_response: data
       });
     }
   } catch (error) {
-    console.error('TikAPI SDK Error:', error.message, error.statusCode || '');
-    if (error.statusCode === 8) {
-      console.error('Account session expired, please re-authenticate X_ACCOUNT_KEY');
-    }
-    res.status(500).json({
-      error: 'Failed to fetch user data',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    console.error('TikAPI Error:', error.message, error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch user info from TikAPI',
+      details: error.message
     });
   }
 });
