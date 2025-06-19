@@ -14,7 +14,32 @@ if (!TIKAPI_KEY) {
   process.exit(1);
 }
 
-// Original TikTokAgeEstimator class
+// Helper function to calculate date range from accuracy
+function calculateDateRange(date, accuracy) {
+  const baseDate = new Date(date);
+  let monthsToAdd = 0;
+  
+  if (accuracy.includes('6 months')) {
+    monthsToAdd = 6;
+  } else if (accuracy.includes('1 year')) {
+    monthsToAdd = 12;
+  } else if (accuracy.includes('2 years')) {
+    monthsToAdd = 24;
+  }
+
+  const startDate = new Date(baseDate);
+  startDate.setMonth(baseDate.getMonth() - monthsToAdd);
+  
+  const endDate = new Date(baseDate);
+  endDate.setMonth(baseDate.getMonth() + monthsToAdd);
+
+  return {
+    start: formatDate(startDate),
+    end: formatDate(endDate)
+  };
+}
+
+// Original TikTokAgeEstimator class with date range
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
     try {
@@ -111,7 +136,8 @@ class TikTokAgeEstimator {
         estimatedDate: new Date(),
         confidence: 'very_low',
         method: 'Default',
-        accuracy: '± 2 years'
+        accuracy: '± 2 years',
+        dateRange: calculateDateRange(new Date(), '± 2 years')
       };
     }
     const weightedSum = estimates.reduce((sum, est) => sum + (est.date.getTime() * est.confidence), 0);
@@ -120,12 +146,14 @@ class TikTokAgeEstimator {
     const maxConfidence = Math.max(...estimates.map(e => e.confidence));
     const confidenceLevel = maxConfidence === 3 ? 'high' : maxConfidence === 2 ? 'medium' : 'low';
     const primaryMethod = estimates.find(e => e.confidence === maxConfidence)?.method || 'Combined';
+    const accuracy = confidenceLevel === 'high' ? '± 6 months' : 
+                     confidenceLevel === 'medium' ? '± 1 year' : '± 2 years';
     return {
       estimatedDate: finalDate,
       confidence: confidenceLevel,
       method: primaryMethod,
-      accuracy: confidenceLevel === 'high' ? '± 6 months' : 
-                confidenceLevel === 'medium' ? '± 1 year' : '± 2 years',
+      accuracy,
+      dateRange: calculateDateRange(finalDate, accuracy),
       allEstimates: estimates
     };
   }
@@ -200,6 +228,7 @@ app.get('/api/user/:username', async (req, res) => {
         region: user.region || 'Unknown',
         user_id: user.id || '',
         estimated_creation_date: formattedDate,
+        estimated_creation_date_range: ageEstimate.dateRange,
         account_age: accountAge,
         estimation_confidence: ageEstimate.confidence,
         estimation_method: ageEstimate.method,
