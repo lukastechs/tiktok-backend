@@ -217,6 +217,12 @@ app.get('/api/user/:username', async (req, res) => {
       const formattedDate = formatDate(ageEstimate.estimatedDate);
       const accountAge = calculateAge(ageEstimate.estimatedDate);
 
+      // Extract location data
+      const region = user.region || 
+                    (user.location && user.location.region) || 
+                    (user.location && user.location.country) || 
+                    'Unknown';
+
       res.json({
         username: user.uniqueId || username,
         nickname: user.nickname || '',
@@ -225,7 +231,12 @@ app.get('/api/user/:username', async (req, res) => {
         total_likes: stats?.heartCount || 0,
         verified: user.verified || false,
         description: user.signature || '',
-        region: user.region || 'Unknown',
+        location: {
+          region: region,
+          country: user.location?.country || 'Unknown',
+          city: user.location?.city || 'Unknown',
+          full_location: user.location?.full_location || 'Unknown'
+        },
         user_id: user.id || '',
         estimated_creation_date: formattedDate,
         estimated_creation_date_range: ageEstimate.dateRange,
@@ -252,7 +263,6 @@ app.get('/api/user/:username', async (req, res) => {
     });
   }
 });
-
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
