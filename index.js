@@ -1,15 +1,45 @@
 import express from 'express';
 import cors from 'cors';
-import TikAPI from 'tikapi';
+import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 
+dotenv.config();
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-// Initialize TikAPI with your API key
-const api = TikAPI('e5lTOPJ45S2Qw3R2JH0SPcr33LRn3XvXXbWmh5XwMztwFqUo');
+const TIKAPI_KEY = process.env.TIKAPI_KEY;
+if (!TIKAPI_KEY) {
+  console.error('TIKAPI_KEY is not set');
+  process.exit(1);
+}
 
-// TikTokAgeEstimator class (unchanged)
+// Helper function to calculate date range from accuracy
+function calculateDateRange(date, accuracy) {
+  const baseDate = new Date(date);
+  let monthsToAdd = 0;
+  
+  if (accuracy.includes('6 months')) {
+    monthsToAdd = 6;
+  } else if (accuracy.includes('1 year')) {
+    monthsToAdd = 12;
+  } else if (accuracy.includes('2 years')) {
+    monthsToAdd = 24;
+  }
+
+  const startDate = new Date(baseDate);
+  startDate.setMonth(baseDate.getMonth() - monthsToAdd);
+  
+  const endDate = new Date(baseDate);
+  endDate.setMonth(baseDate.getMonth() + monthsToAdd);
+
+  return {
+    start: formatDate(startDate),
+    end: formatDate(endDate)
+  };
+}
+
+// Original TikTokAgeEstimator class with date range
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
     try {
@@ -106,7 +136,8 @@ class TikTokAgeEstimator {
         estimatedDate: new Date(),
         confidence: 'very_low',
         method: 'Default',
-        accuracy: '± 2 years'
+        accuracy: '± 2 years',
+        dateRange: calculateDateRange(new Date(), '± 2 years')
       };
     }
     const weightedSum = estimates.reduce((sum, est) => sum + (est.date.getTime() * est.confidence), 0);
@@ -115,18 +146,20 @@ class TikTokAgeEstimator {
     const maxConfidence = Math.max(...estimates.map(e => e.confidence));
     const confidenceLevel = maxConfidence === 3 ? 'high' : maxConfidence === 2 ? 'medium' : 'low';
     const primaryMethod = estimates.find(e => e.confidence === maxConfidence)?.method || 'Combined';
+    const accuracy = confidenceLevel === 'high' ? '± 6 months' : 
+                     confidenceLevel === 'medium' ? '± 1 year' : '± 2 years';
     return {
       estimatedDate: finalDate,
       confidence: confidenceLevel,
       method: primaryMethod,
-      accuracy: confidenceLevel === 'high' ? '± 6 months' : 
-                confidenceLevel === 'medium' ? '± 1 year' : '± 2 years',
+      accuracy,
+      dateRange: calculateDateRange(finalDate, accuracy),
       allEstimates: estimates
     };
   }
 }
 
-// Helper functions (unchanged)
+// Helper functions
 function formatDate(date) {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
   return date.toLocaleDateString('en-US', options);
@@ -157,35 +190,64 @@ app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
 
   try {
-    // Use TikAPI's /public/user/info endpoint
-    const response = await api.public.user({
-      username: username
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limiting
+    
+    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-API-KEY': TIKAPI_KEY,
+        'Accept': 'application/json',
+        // 'X-Account-Key': 'yourOptionalAccountKeyHere' // Uncomment and set if needed
+      }
     });
+    
+    const data = await response.json();
+    console.log('Full API Response:', JSON.stringify(data, null, 2));
 
-    if (response.json?.success && response.json.user) {
-      const userData = response.json.user;
+    if (data?.status === 'success' && data.userInfo) {
+      const user = data.userInfo.user;
+      const stats = data.userInfo.stats;
+
+      // Extract location data - multiple possible locations
+      const location = {
+        region: user?.region || 
+                user?.location?.region || 
+                user?.location?.country_region?.region || 
+                'Unknown',
+        country: user?.location?.country || 
+                user?.location?.country_region?.country || 
+                'Unknown',
+        city: user?.location?.city || 'Unknown',
+        full: user?.location?.full_location || 
+              (user?.location?.city && user?.location?.country ? 
+               `${user.location.city}, ${user.location.country}` : 
+               'Unknown')
+      };
+
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
-        userData.id || '0',
-        userData.uniqueId || username,
-        userData.stats?.followerCount || 0,
-        userData.stats?.heartCount || 0,
-        userData.verified || false
+        user.id || '0',
+        user.uniqueId || username,
+        stats?.followerCount || 0,
+        stats?.heartCount || 0,
+        user.verified || false
       );
 
       const formattedDate = formatDate(ageEstimate.estimatedDate);
       const accountAge = calculateAge(ageEstimate.estimatedDate);
 
       res.json({
-        username: userData.uniqueId || username,
-        nickname: userData.nickname || '',
-        avatar: userData.avatarLarger || '',
-        followers: userData.stats?.followerCount || 0,
-        total_likes: userData.stats?.heartCount || 0,
-        verified: userData.verified || false,
-        description: userData.signature || '',
-        region: userData.region || '',
-        user_id: userData.id || '',
+        username: user.uniqueId || username,
+        nickname: user.nickname || '',
+        avatar: user.avatarLarger || '',
+        followers: stats?.followerCount || 0,
+        total_likes: stats?.heartCount || 0,
+        verified: user.verified || false,
+        description: user.signature || '',
+        location: location, // New location object
+        user_id: user.id || '',
         estimated_creation_date: formattedDate,
+        estimated_creation_date_range: ageEstimate.dateRange,
         account_age: accountAge,
         estimation_confidence: ageEstimate.confidence,
         estimation_method: ageEstimate.method,
@@ -196,11 +258,18 @@ app.get('/api/user/:username', async (req, res) => {
         }
       });
     } else {
-      res.status(404).json({ error: response.json?.message || 'User not found or data missing' });
+      res.status(404).json({
+        error: data?.message || 'User not found',
+        details: data?.error_details || 'No additional error information'
+      });
     }
   } catch (error) {
-    console.error('TikAPI Error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch user info from TikAPI' });
+    console.error('API Error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch user data',
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
