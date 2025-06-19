@@ -9,14 +9,10 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 const TIKAPI_KEY = process.env.TIKAPI_KEY;
-const X_ACCOUNT_KEY = process.env.X_ACCOUNT_KEY;
 if (!TIKAPI_KEY) {
   console.error('TIKAPI_KEY is not set');
   process.exit(1);
 }
-
-// Initialize TikAPI client
-const api = TikAPI(TIKAPI_KEY, { accountKey: X_ACCOUNT_KEY });
 
 // Helper function to calculate date range from accuracy
 function calculateDateRange(date, accuracy) {
@@ -195,7 +191,7 @@ app.get('/api/user/:username', async (req, res) => {
 
   try {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const url = `https://api.tikapi.io/user/info?username=${encodeURIComponent(username)}`;
+    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
