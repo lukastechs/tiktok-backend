@@ -9,6 +9,7 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 const TIKAPI_KEY = process.env.TIKAPI_KEY;
+const X_ACCOUNT_KEY = process.env.X_ACCOUNT_KEY;
 if (!TIKAPI_KEY) {
   console.error('TIKAPI_KEY is not set');
   process.exit(1);
