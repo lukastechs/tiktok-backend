@@ -189,14 +189,16 @@ app.get('/', (req, res) => {
 app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
 
-const response = await fetch(`https://api.tikapi.io/public/user?username=${username}`, {
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
+    const response = await fetch(`https://api.tikapi.io/public/user?username=${username}`, {
   method: 'GET',
   headers: {
     Authorization: `Bearer ${process.env.TIKAPI_KEY}`
-  }
-});
-
-const data = await response.json();
+        'Accept': 'application/json'
+      }
+    });
+    const data = await response.json();
 
     console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
 
@@ -222,7 +224,7 @@ const data = await response.json();
         total_likes: stats?.heartCount || 0,
         verified: user.verified || false,
         description: user.signature || '',
-        region: data?.userInfo?.extraData?.region || 'Unknown',
+        region: user.region || 'Unknown',
         user_id: user.id || '',
         estimated_creation_date: formattedDate,
         estimated_creation_date_range: ageEstimate.dateRange,
