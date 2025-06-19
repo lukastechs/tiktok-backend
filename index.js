@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import fetch from 'node-fetch';
+import TikAPI from 'tikapi';
 
 dotenv.config();
 const app = express();
@@ -9,10 +9,15 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 const TIKAPI_KEY = process.env.TIKAPI_KEY;
+const X_ACCOUNT_KEY = process.env.X_ACCOUNT_KEY; // Optional, set in .env if needed
+
 if (!TIKAPI_KEY) {
   console.error('TIKAPI_KEY is not set');
   process.exit(1);
 }
+
+// Initialize TikAPI client
+const api = TikAPI(TIKAPI_KEY, { accountKey: X_ACCOUNT_KEY });
 
 // Helper function to calculate date range from accuracy
 function calculateDateRange(date, accuracy) {
@@ -191,19 +196,12 @@ app.get('/api/user/:username', async (req, res) => {
 
   try {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limiting
-    
-    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-API-KEY': TIKAPI_KEY,
-        'Accept': 'application/json',
-        // 'X-Account-Key': 'yourOptionalAccountKeyHere' // Uncomment and set if needed
-      }
-    });
-    
-    const data = await response.json();
-    console.log('Full API Response:', JSON.stringify(data, null, 2));
+
+    // Use TikAPI SDK to fetch user data
+    const response = await api.public.check({ username });
+    const data = response?.json;
+
+    console.log('TikAPI SDK Response:', JSON.stringify(data, null, 2));
 
     if (data?.status === 'success' && data.userInfo) {
       const user = data.userInfo.user;
@@ -244,7 +242,7 @@ app.get('/api/user/:username', async (req, res) => {
         total_likes: stats?.heartCount || 0,
         verified: user.verified || false,
         description: user.signature || '',
-        location: location, // New location object
+        location: location,
         user_id: user.id || '',
         estimated_creation_date: formattedDate,
         estimated_creation_date_range: ageEstimate.dateRange,
@@ -264,7 +262,7 @@ app.get('/api/user/:username', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('TikAPI SDK Error:', error);
     res.status(500).json({
       error: 'Failed to fetch user data',
       details: error.message,
