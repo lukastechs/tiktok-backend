@@ -191,7 +191,7 @@ app.get('/api/user/:username', async (req, res) => {
 
   try {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
+    const url = `https://api.tikapi.io/public/user?username=${encodeURIComponent(username)}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
