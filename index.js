@@ -225,7 +225,10 @@ app.get('/api/user/:username', async (req, res) => {
         total_likes: stats?.heartCount || 0,
         verified: user.verified || false,
         description: user.signature || '',
-        region: user.region || 'Unknown',
+        region: (
+    data?.userInfo?.extraData?.region &&
+    typeof data.userInfo.extraData.region === 'string'
+  ) ? data.userInfo.extraData.region : 'Unknown',
         user_id: user.id || '',
         estimated_creation_date: formattedDate,
         estimated_creation_date_range: ageEstimate.dateRange,
