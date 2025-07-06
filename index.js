@@ -8,9 +8,9 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-const SCRAPER_TECH_KEY = process.env.SCRAPER_TECH_KEY;
-if (!SCRAPER_TECH_KEY) {
-  console.error('SCRAPER_TECH_KEY is not set');
+const TIKAPI_KEY = process.env.TIKAPI_KEY;
+if (!TIKAPI_KEY) {
+  console.error('TIKAPI_KEY is not set');
   process.exit(1);
 }
 
@@ -18,7 +18,7 @@ if (!SCRAPER_TECH_KEY) {
 function calculateDateRange(date, accuracy) {
   const baseDate = new Date(date);
   let monthsToAdd = 0;
-
+  
   if (accuracy.includes('6 months')) {
     monthsToAdd = 6;
   } else if (accuracy.includes('1 year')) {
@@ -29,7 +29,7 @@ function calculateDateRange(date, accuracy) {
 
   const startDate = new Date(baseDate);
   startDate.setMonth(baseDate.getMonth() - monthsToAdd);
-
+  
   const endDate = new Date(baseDate);
   endDate.setMonth(baseDate.getMonth() + monthsToAdd);
 
@@ -39,7 +39,7 @@ function calculateDateRange(date, accuracy) {
   };
 }
 
-// Age Estimator Class
+// Original TikTokAgeEstimator class with date range
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
     try {
@@ -109,15 +109,27 @@ class TikTokAgeEstimator {
     const confidence = { low: 1, medium: 2, high: 3 };
     const userIdEst = this.estimateFromUserId(userId);
     if (userIdEst) {
-      estimates.push({ date: userIdEst, confidence: confidence.high, method: 'User ID Analysis' });
+      estimates.push({ 
+        date: userIdEst, 
+        confidence: confidence.high, 
+        method: 'User ID Analysis' 
+      });
     }
     const usernameEst = this.estimateFromUsername(username);
     if (usernameEst) {
-      estimates.push({ date: usernameEst, confidence: confidence.medium, method: 'Username Pattern' });
+      estimates.push({ 
+        date: usernameEst, 
+        confidence: confidence.medium, 
+        method: 'Username Pattern' 
+      });
     }
     const metricsEst = this.estimateFromMetrics(followers, totalLikes, verified);
     if (metricsEst) {
-      estimates.push({ date: metricsEst, confidence: confidence.low, method: 'Profile Metrics' });
+      estimates.push({ 
+        date: metricsEst, 
+        confidence: confidence.low, 
+        method: 'Profile Metrics' 
+      });
     }
     if (estimates.length === 0) {
       return {
@@ -134,7 +146,8 @@ class TikTokAgeEstimator {
     const maxConfidence = Math.max(...estimates.map(e => e.confidence));
     const confidenceLevel = maxConfidence === 3 ? 'high' : maxConfidence === 2 ? 'medium' : 'low';
     const primaryMethod = estimates.find(e => e.confidence === maxConfidence)?.method || 'Combined';
-    const accuracy = confidenceLevel === 'high' ? '± 6 months' : confidenceLevel === 'medium' ? '± 1 year' : '± 2 years';
+    const accuracy = confidenceLevel === 'high' ? '± 6 months' : 
+                     confidenceLevel === 'medium' ? '± 1 year' : '± 2 years';
     return {
       estimatedDate: finalDate,
       confidence: confidenceLevel,
@@ -146,6 +159,7 @@ class TikTokAgeEstimator {
   }
 }
 
+// Helper functions
 function formatDate(date) {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
   return date.toLocaleDateString('en-US', options);
@@ -176,26 +190,27 @@ app.get('/api/user/:username', async (req, res) => {
   const username = req.params.username;
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // avoid rate limits
-
-    const url = `https://api.scraper.tech/api/tiktok/user?username=${encodeURIComponent(username)}`;
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
+    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
     const response = await fetch(url, {
+      method: 'GET',
       headers: {
-        'Authorization': `Bearer ${SCRAPER_TECH_KEY}`,
+        'X-API-KEY': TIKAPI_KEY,
         'Accept': 'application/json'
       }
     });
     const data = await response.json();
-    console.log('Scraper.Tech Response:', JSON.stringify(data, null, 2));
 
-    if (data?.status === 'ok' && data.user) {
-      const user = data.user;
-      const stats = user.stats || {};
+    console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
+
+    if (data?.status === 'success' && data.userInfo) {
+      const user = data.userInfo.user;
+      const stats = data.userInfo.stats;
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
         user.id || '0',
         user.uniqueId || username,
-        stats.followerCount || 0,
-        stats.heartCount || 0,
+        stats?.followerCount || 0,
+        stats?.heartCount || 0,
         user.verified || false
       );
 
@@ -206,8 +221,8 @@ app.get('/api/user/:username', async (req, res) => {
         username: user.uniqueId || username,
         nickname: user.nickname || '',
         avatar: user.avatarLarger || '',
-        followers: stats.followerCount || 0,
-        total_likes: stats.heartCount || 0,
+        followers: stats?.followerCount || 0,
+        total_likes: stats?.heartCount || 0,
         verified: user.verified || false,
         description: user.signature || '',
         region: user.region || 'Unknown',
@@ -224,15 +239,15 @@ app.get('/api/user/:username', async (req, res) => {
         }
       });
     } else {
-      res.status(404).json({
+      res.status(404).json({ 
         error: data?.message || 'User not found or data missing',
-        scraper_response: data
+        tikapi_response: data
       });
     }
   } catch (error) {
-    console.error('Scraper.Tech Error:', error.message, error.stack);
-    res.status(500).json({
-      error: 'Failed to fetch user info from Scraper.Tech',
+    console.error('TikAPI Error:', error.message, error.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch user info from TikAPI',
       details: error.message
     });
   }
