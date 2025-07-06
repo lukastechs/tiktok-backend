@@ -203,28 +203,30 @@ app.get('/api/user/:username', async (req, res) => {
 
     console.log('Scraper.Tech Response:', JSON.stringify(data, null, 2)); // Log full response
 
-    if (response.ok && data && data.username) {
+    if (response.ok && data && data.userInfo && data.userInfo.user) {
+      const user = data.userInfo.user;
+      const stats = data.userInfo.stats;
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
-        data.user_id || '0',
-        data.username || username,
-        data.followers || 0,
-        data.total_likes || 0,
-        data.verified || false
+        user.id || '0',
+        user.uniqueId || username,
+        stats?.followerCount || 0,
+        stats?.heartCount || 0,
+        user.verified || false
       );
 
       const formattedDate = formatDate(ageEstimate.estimatedDate);
       const accountAge = calculateAge(ageEstimate.estimatedDate);
 
       res.json({
-        username: data.username || username,
-        nickname: data.nickname || '',
-        avatar: data.avatar || '',
-        followers: data.followers || 0,
-        total_likes: data.total_likes || 0,
-        verified: data.verified || false,
-        description: data.description || '',
-        region: data.region || 'Unknown',
-        user_id: data.user_id || '',
+        username: user.uniqueId || username,
+        nickname: user.nickname || '',
+        avatar: user.avatarLarger || '',
+        followers: stats?.followerCount || 0,
+        total_likes: stats?.heartCount || 0,
+        verified: user.verified || false,
+        description: user.signature || '',
+        region: user.region || 'Unknown',
+        user_id: user.id || '',
         estimated_creation_date: formattedDate,
         estimated_creation_date_range: ageEstimate.dateRange,
         account_age: accountAge,
