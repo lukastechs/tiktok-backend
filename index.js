@@ -8,9 +8,9 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-const TIKAPI_KEY = process.env.TIKAPI_KEY;
-if (!TIKAPI_KEY) {
-  console.error('TIKAPI_KEY is not set');
+const SCRAPER_TECH_KEY = process.env.SCRAPER_TECH_KEY;
+if (!SCRAPER_TECH_KEY) {
+  console.error('SCRAPER_TECH_KEY is not set');
   process.exit(1);
 }
 
@@ -39,7 +39,7 @@ function calculateDateRange(date, accuracy) {
   };
 }
 
-// Original TikTokAgeEstimator class with date range
+// TikTokAgeEstimator class (unchanged)
 class TikTokAgeEstimator {
   static estimateFromUserId(userId) {
     try {
@@ -191,19 +191,19 @@ app.get('/api/user/:username', async (req, res) => {
 
   try {
     await new Promise(resolve => setTimeout(resolve, 1000)); // Avoid rate limits
-    const url = `https://api.tikapi.io/public/check?username=${encodeURIComponent(username)}`;
+    const url = `https://api.scraper.tech/tiktok_user.php?username=${encodeURIComponent(username)}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'X-API-KEY': TIKAPI_KEY,
+        'scraper-key': SCRAPER_TECH_KEY,
         'Accept': 'application/json'
       }
     });
     const data = await response.json();
 
-    console.log('TikAPI Response:', JSON.stringify(data, null, 2)); // Log full response
+    console.log('Scraper.Tech Response:', JSON.stringify(data, null, 2)); // Log full response
 
-    if (data?.status === 'success' && data.userInfo) {
+    if (response.ok && data && data.userInfo) {
       const user = data.userInfo.user;
       const stats = data.userInfo.stats;
       const ageEstimate = TikTokAgeEstimator.estimateAccountAge(
@@ -240,14 +240,14 @@ app.get('/api/user/:username', async (req, res) => {
       });
     } else {
       res.status(404).json({ 
-        error: data?.message || 'User not found or data missing',
-        tikapi_response: data
+        error: data?.error || 'User not found or data missing',
+        scraper_tech_response: data
       });
     }
   } catch (error) {
-    console.error('TikAPI Error:', error.message, error.stack);
+    console.error('Scraper.Tech Error:', error.message, error.stack);
     res.status(500).json({ 
-      error: 'Failed to fetch user info from TikAPI',
+      error: 'Failed to fetch user info from Scraper.Tech',
       details: error.message
     });
   }
